@@ -47,7 +47,11 @@ func newFileWriter(fileName string) (writer *fileWriter, err error) {
 
 func (fw *fileWriter) Close() error {
 	if fw.innerWriter != nil {
-		return fw.innerWriter.Close()
+		err := fw.innerWriter.Close()
+		if err != nil {
+			return err
+		}
+		fw.innerWriter = nil
 	}
 	return nil
 }
@@ -74,12 +78,7 @@ func (fw *fileWriter) createFile() error {
 	}
 
 	// If exists
-	_, err = os.Lstat(fw.fileName)
-	if nil == err {
-		fw.innerWriter, err = os.OpenFile(fw.fileName, os.O_WRONLY|os.O_APPEND, defaultFilePermissions)
-	} else {
-		fw.innerWriter, err = os.Create(fw.fileName)
-	}
+	fw.innerWriter, err = os.OpenFile(fw.fileName, os.O_WRONLY|os.O_APPEND|os.O_CREATE, defaultFilePermissions)
 
 	if err != nil {
 		return err

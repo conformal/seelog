@@ -25,6 +25,8 @@
 package seelog
 
 import (
+	"crypto/tls"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -35,61 +37,105 @@ import (
 
 // Names of elements of seelog config.
 const (
-	seelogConfigId                  = "seelog"
-	outputsId                       = "outputs"
-	formatsId                       = "formats"
-	minLevelId                      = "minlevel"
-	maxLevelId                      = "maxlevel"
-	levelsId                        = "levels"
-	exceptionsId                    = "exceptions"
-	exceptionId                     = "exception"
-	funcPatternId                   = "funcpattern"
-	filePatternId                   = "filepattern"
-	formatId                        = "format"
-	formatAttrId                    = "format"
-	formatKeyAttrId                 = "id"
-	outputFormatId                  = "formatid"
-	pathId                          = "path"
-	fileWriterId                    = "file"
-	smtpWriterId                    = "smtp"
-	senderaddressId                 = "senderaddress"
-	senderNameId                    = "sendername"
-	recipientId                     = "recipient"
-	addressId                       = "address"
-	hostNameId                      = "hostname"
-	hostPortId                      = "hostport"
-	userNameId                      = "username"
-	userPassId                      = "password"
-	cACertDirpathId                 = "cacertdirpath"
-	splitterDispatcherId            = "splitter"
-	consoleWriterId                 = "console"
-	filterDispatcherId              = "filter"
-	filterLevelsAttrId              = "levels"
-	rollingfileWriterId             = "rollingfile"
-	rollingFileTypeAttr             = "type"
-	rollingFilePathAttr             = "filename"
-	rollingFileMaxSizeAttr          = "maxsize"
-	rollingFileMaxRollsAttr         = "maxrolls"
-	rollingFileDataPatternAttr      = "datepattern"
-	rollingFileArchiveAttr          = "archivetype"
-	rollingFileArchivePathAttr      = "archivepath"
-	bufferedWriterId                = "buffered"
-	bufferedSizeAttr                = "size"
-	bufferedFlushPeriodAttr         = "flushperiod"
-	loggerTypeFromStringAttr        = "type"
-	asyncLoggerIntervalAttr         = "asyncinterval"
-	adaptLoggerMinIntervalAttr      = "mininterval"
-	adaptLoggerMaxIntervalAttr      = "maxinterval"
-	adaptLoggerCriticalMsgCountAttr = "critmsgcount"
-	predefinedPrefix                = "std:"
-	connWriterId                    = "conn"
-	connWriterAddrAttr              = "addr"
-	connWriterNetAttr               = "net"
-	connWriterReconnectOnMsgAttr    = "reconnectonmsg"
+	seelogConfigID                   = "seelog"
+	outputsID                        = "outputs"
+	formatsID                        = "formats"
+	minLevelID                       = "minlevel"
+	maxLevelID                       = "maxlevel"
+	levelsID                         = "levels"
+	exceptionsID                     = "exceptions"
+	exceptionID                      = "exception"
+	funcPatternID                    = "funcpattern"
+	filePatternID                    = "filepattern"
+	formatID                         = "format"
+	formatAttrID                     = "format"
+	formatKeyAttrID                  = "id"
+	outputFormatID                   = "formatid"
+	pathID                           = "path"
+	fileWriterID                     = "file"
+	smtpWriterID                     = "smtp"
+	senderaddressID                  = "senderaddress"
+	senderNameID                     = "sendername"
+	recipientID                      = "recipient"
+	mailHeaderID                     = "header"
+	mailHeaderNameID                 = "name"
+	mailHeaderValueID                = "value"
+	addressID                        = "address"
+	hostNameID                       = "hostname"
+	hostPortID                       = "hostport"
+	userNameID                       = "username"
+	userPassID                       = "password"
+	cACertDirpathID                  = "cacertdirpath"
+	subjectID                        = "subject"
+	splitterDispatcherID             = "splitter"
+	consoleWriterID                  = "console"
+	customReceiverID                 = "custom"
+	customNameAttrID                 = "name"
+	customNameDataAttrPrefix         = "data-"
+	filterDispatcherID               = "filter"
+	filterLevelsAttrID               = "levels"
+	rollingfileWriterID              = "rollingfile"
+	rollingFileTypeAttr              = "type"
+	rollingFilePathAttr              = "filename"
+	rollingFileMaxSizeAttr           = "maxsize"
+	rollingFileMaxRollsAttr          = "maxrolls"
+	rollingFileNameModeAttr          = "namemode"
+	rollingFileDataPatternAttr       = "datepattern"
+	rollingFileArchiveAttr           = "archivetype"
+	rollingFileArchivePathAttr       = "archivepath"
+	bufferedWriterID                 = "buffered"
+	bufferedSizeAttr                 = "size"
+	bufferedFlushPeriodAttr          = "flushperiod"
+	loggerTypeFromStringAttr         = "type"
+	asyncLoggerIntervalAttr          = "asyncinterval"
+	adaptLoggerMinIntervalAttr       = "mininterval"
+	adaptLoggerMaxIntervalAttr       = "maxinterval"
+	adaptLoggerCriticalMsgCountAttr  = "critmsgcount"
+	predefinedPrefix                 = "std:"
+	connWriterID                     = "conn"
+	connWriterAddrAttr               = "addr"
+	connWriterNetAttr                = "net"
+	connWriterReconnectOnMsgAttr     = "reconnectonmsg"
+	connWriterUseTLSAttr             = "tls"
+	connWriterInsecureSkipVerifyAttr = "insecureskipverify"
 )
 
+// CustomReceiverProducer is the signature of the function CfgParseParams needs to create
+// custom receivers.
+type CustomReceiverProducer func(CustomReceiverInitArgs) (CustomReceiver, error)
+
+// CfgParseParams represent specific parse options or flags used by parser. It is used if seelog parser needs
+// some special directives or additional info to correctly parse a config.
+type CfgParseParams struct {
+	// CustomReceiverProducers expose the same functionality as RegisterReceiver func
+	// but only in the scope (context) of the config parse func instead of a global package scope.
+	//
+	// It means that if you use custom receivers in your code, you may either register them globally once with
+	// RegisterReceiver or you may call funcs like LoggerFromParamConfigAsFile (with 'ParamConfig')
+	// and use CustomReceiverProducers to provide custom producer funcs.
+	//
+	// A producer func is called when config parser processes a '<custom>' element. It takes the 'name' attribute
+	// of the element and tries to find a match in two places:
+	// 1) CfgParseParams.CustomReceiverProducers map
+	// 2) Global type map, filled by RegisterReceiver
+	//
+	// If a match is found in the CustomReceiverProducers map, parser calls the corresponding producer func
+	// passing the init args to it.	The func takes exactly the same args as CustomReceiver.AfterParse.
+	// The producer func must return a correct receiver or an error. If case of error, seelog will behave
+	// in the same way as with any other config error.
+	//
+	// You may use this param to set custom producers in case you need to pass some context when instantiating
+	// a custom receiver or if you frequently change custom receivers with different parameters or in any other
+	// situation where package-level registering (RegisterReceiver) is not an option for you.
+	CustomReceiverProducers map[string]CustomReceiverProducer
+}
+
+func (cfg *CfgParseParams) String() string {
+	return fmt.Sprintf("CfgParams: {custom_recs=%d}", len(cfg.CustomReceiverProducers))
+}
+
 type elementMapEntry struct {
-	constructor func(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter) (interface{}, error)
+	constructor func(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter, cfg *CfgParseParams) (interface{}, error)
 }
 
 var elementMap map[string]elementMapEntry
@@ -97,14 +143,15 @@ var predefinedFormats map[string]*formatter
 
 func init() {
 	elementMap = map[string]elementMapEntry{
-		fileWriterId:        {createfileWriter},
-		splitterDispatcherId: {createSplitter},
-		filterDispatcherId:  {createFilter},
-		consoleWriterId:     {createConsoleWriter},
-		rollingfileWriterId: {createRollingFileWriter},
-		bufferedWriterId:    {createbufferedWriter},
-		smtpWriterId:        {createSmtpWriter},
-		connWriterId:        {createconnWriter},
+		fileWriterID:         {createfileWriter},
+		splitterDispatcherID: {createSplitter},
+		customReceiverID:     {createCustomReceiver},
+		filterDispatcherID:   {createFilter},
+		consoleWriterID:      {createConsoleWriter},
+		rollingfileWriterID:  {createRollingFileWriter},
+		bufferedWriterID:     {createbufferedWriter},
+		smtpWriterID:         {createSMTPWriter},
+		connWriterID:         {createconnWriter},
 	}
 
 	err := fillPredefinedFormats()
@@ -144,24 +191,62 @@ func fillPredefinedFormats() error {
 	return nil
 }
 
+// configFromXMLDecoder parses data from a given XML decoder.
+// Returns parsed config which can be used to create logger in case no errors occured.
+// Returns error if format is incorrect or anything happened.
+func configFromXMLDecoder(xmlParser *xml.Decoder, rootNode xml.Token) (*logConfig, error) {
+	return configFromXMLDecoderWithConfig(xmlParser, rootNode, nil)
+}
+
+// configFromXMLDecoderWithConfig parses data from a given XML decoder.
+// Returns parsed config which can be used to create logger in case no errors occured.
+// Returns error if format is incorrect or anything happened.
+func configFromXMLDecoderWithConfig(xmlParser *xml.Decoder, rootNode xml.Token, cfg *CfgParseParams) (*logConfig, error) {
+	_, ok := rootNode.(xml.StartElement)
+	if !ok {
+		return nil, errors.New("rootNode must be XML startElement")
+	}
+
+	config, err := unmarshalNode(xmlParser, rootNode)
+	if err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, errors.New("xml has no content")
+	}
+
+	return configFromXMLNodeWithConfig(config, cfg)
+}
+
 // configFromReader parses data from a given reader.
 // Returns parsed config which can be used to create logger in case no errors occured.
 // Returns error if format is incorrect or anything happened.
 func configFromReader(reader io.Reader) (*logConfig, error) {
+	return configFromReaderWithConfig(reader, nil)
+}
+
+// configFromReaderWithConfig parses data from a given reader.
+// Returns parsed config which can be used to create logger in case no errors occured.
+// Returns error if format is incorrect or anything happened.
+func configFromReaderWithConfig(reader io.Reader, cfg *CfgParseParams) (*logConfig, error) {
 	config, err := unmarshalConfig(reader)
 	if err != nil {
 		return nil, err
 	}
 
-	if config.name != seelogConfigId {
-		return nil, errors.New("Root xml tag must be '" + seelogConfigId + "'")
+	if config.name != seelogConfigID {
+		return nil, errors.New("root xml tag must be '" + seelogConfigID + "'")
 	}
 
-	err = checkUnexpectedAttribute(
+	return configFromXMLNodeWithConfig(config, cfg)
+}
+
+func configFromXMLNodeWithConfig(config *xmlNode, cfg *CfgParseParams) (*logConfig, error) {
+	err := checkUnexpectedAttribute(
 		config,
-		minLevelId,
-		maxLevelId,
-		levelsId,
+		minLevelID,
+		maxLevelID,
+		levelsID,
 		loggerTypeFromStringAttr,
 		asyncLoggerIntervalAttr,
 		adaptLoggerMinIntervalAttr,
@@ -172,7 +257,7 @@ func configFromReader(reader io.Reader) (*logConfig, error) {
 		return nil, err
 	}
 
-	err = checkExpectedElements(config, optionalElement(outputsId), optionalElement(formatsId), optionalElement(exceptionsId))
+	err = checkExpectedElements(config, optionalElement(outputsID), optionalElement(formatsID), optionalElement(exceptionsID))
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +281,7 @@ func configFromReader(reader io.Reader) (*logConfig, error) {
 		return nil, err
 	}
 
-	dispatcher, err := getOutputsTree(config, formats)
+	dispatcher, err := getOutputsTree(config, formats, cfg)
 	if err != nil {
 		// If we open several files, but then fail to parse the config, we should close
 		// those files before reporting that config is invalid.
@@ -212,17 +297,17 @@ func configFromReader(reader io.Reader) (*logConfig, error) {
 		return nil, err
 	}
 
-	return newConfig(constraints, exceptions, dispatcher, loggerType, logData)
+	return newConfig(constraints, exceptions, dispatcher, loggerType, logData, cfg)
 }
 
 func getConstraints(node *xmlNode) (logLevelConstraints, error) {
-	minLevelStr, isMinLevel := node.attributes[minLevelId]
-	maxLevelStr, isMaxLevel := node.attributes[maxLevelId]
-	levelsStr, isLevels := node.attributes[levelsId]
+	minLevelStr, isMinLevel := node.attributes[minLevelID]
+	maxLevelStr, isMaxLevel := node.attributes[maxLevelID]
+	levelsStr, isLevels := node.attributes[levelsID]
 
 	if isLevels && (isMinLevel && isMaxLevel) {
-		return nil, errors.New("For level declaration use '" + levelsId + "'' OR '" + minLevelId +
-			"', '" + maxLevelId + "'")
+		return nil, errors.New("for level declaration use '" + levelsID + "'' OR '" + minLevelID +
+			"', '" + maxLevelID + "'")
 	}
 
 	offString := LogLevel(Off).String()
@@ -241,21 +326,21 @@ func getConstraints(node *xmlNode) (logLevelConstraints, error) {
 		return newListConstraints(levels)
 	}
 
-	var minLevel LogLevel = TraceLvl
+	var minLevel = LogLevel(TraceLvl)
 	if isMinLevel {
 		found := true
 		minLevel, found = LogLevelFromString(minLevelStr)
 		if !found {
-			return nil, errors.New("Declared " + minLevelId + " not found: " + minLevelStr)
+			return nil, errors.New("declared " + minLevelID + " not found: " + minLevelStr)
 		}
 	}
 
-	var maxLevel LogLevel = CriticalLvl
+	var maxLevel = LogLevel(CriticalLvl)
 	if isMaxLevel {
 		found := true
 		maxLevel, found = LogLevelFromString(maxLevelStr)
 		if !found {
-			return nil, errors.New("Declared " + maxLevelId + " not found: " + maxLevelStr)
+			return nil, errors.New("declared " + maxLevelID + " not found: " + maxLevelStr)
 		}
 	}
 
@@ -264,11 +349,11 @@ func getConstraints(node *xmlNode) (logLevelConstraints, error) {
 
 func parseLevels(str string) ([]LogLevel, error) {
 	levelsStrArr := strings.Split(strings.Replace(str, " ", "", -1), ",")
-	levels := make([]LogLevel, 0)
+	var levels []LogLevel
 	for _, levelStr := range levelsStrArr {
 		level, found := LogLevelFromString(levelStr)
 		if !found {
-			return nil, errors.New("Declared level not found: " + levelStr)
+			return nil, errors.New("declared level not found: " + levelStr)
 		}
 
 		levels = append(levels, level)
@@ -278,11 +363,11 @@ func parseLevels(str string) ([]LogLevel, error) {
 }
 
 func getExceptions(config *xmlNode) ([]*logLevelException, error) {
-	exceptions := make([]*logLevelException, 0)
+	var exceptions []*logLevelException
 
 	var exceptionsNode *xmlNode
 	for _, child := range config.children {
-		if child.name == exceptionsId {
+		if child.name == exceptionsID {
 			exceptionsNode = child
 			break
 		}
@@ -303,22 +388,22 @@ func getExceptions(config *xmlNode) ([]*logLevelException, error) {
 	}
 
 	for _, exceptionNode := range exceptionsNode.children {
-		if exceptionNode.name != exceptionId {
-			return nil, errors.New("Incorrect nested element in exceptions section: " + exceptionNode.name)
+		if exceptionNode.name != exceptionID {
+			return nil, errors.New("incorrect nested element in exceptions section: " + exceptionNode.name)
 		}
 
-		err := checkUnexpectedAttribute(exceptionNode, minLevelId, maxLevelId, levelsId, funcPatternId, filePatternId)
+		err := checkUnexpectedAttribute(exceptionNode, minLevelID, maxLevelID, levelsID, funcPatternID, filePatternID)
 		if err != nil {
 			return nil, err
 		}
 
 		constraints, err := getConstraints(exceptionNode)
 		if err != nil {
-			return nil, errors.New("Incorrect " + exceptionsId + " node: " + err.Error())
+			return nil, errors.New("incorrect " + exceptionsID + " node: " + err.Error())
 		}
 
-		funcPattern, isFuncPattern := exceptionNode.attributes[funcPatternId]
-		filePattern, isFilePattern := exceptionNode.attributes[filePatternId]
+		funcPattern, isFuncPattern := exceptionNode.attributes[funcPatternID]
+		filePattern, isFilePattern := exceptionNode.attributes[filePatternID]
 		if !isFuncPattern {
 			funcPattern = "*"
 		}
@@ -328,7 +413,7 @@ func getExceptions(config *xmlNode) ([]*logLevelException, error) {
 
 		exception, err := newLogLevelException(funcPattern, filePattern, constraints)
 		if err != nil {
-			return nil, errors.New("Incorrect exception node: " + err.Error())
+			return nil, errors.New("incorrect exception node: " + err.Error())
 		}
 
 		exceptions = append(exceptions, exception)
@@ -347,8 +432,8 @@ func checkDistinctExceptions(exceptions []*logLevelException) error {
 			if exception.FuncPattern() == exception1.FuncPattern() &&
 				exception.FilePattern() == exception1.FilePattern() {
 
-				return errors.New(fmt.Sprintf("There are two or more duplicate exceptions. Func: %v, file% %v",
-					exception.FuncPattern(), exception.FilePattern()))
+				return fmt.Errorf("there are two or more duplicate exceptions. Func: %v, file %v",
+					exception.FuncPattern(), exception.FilePattern())
 			}
 		}
 	}
@@ -361,7 +446,7 @@ func getFormats(config *xmlNode) (map[string]*formatter, error) {
 
 	var formatsNode *xmlNode
 	for _, child := range config.children {
-		if child.name == formatsId {
+		if child.name == formatsID {
 			formatsNode = child
 			break
 		}
@@ -382,22 +467,22 @@ func getFormats(config *xmlNode) (map[string]*formatter, error) {
 	}
 
 	for _, formatNode := range formatsNode.children {
-		if formatNode.name != formatId {
-			return nil, errors.New("Incorrect nested element in " + formatsId + " section: " + formatNode.name)
+		if formatNode.name != formatID {
+			return nil, errors.New("incorrect nested element in " + formatsID + " section: " + formatNode.name)
 		}
 
-		err := checkUnexpectedAttribute(formatNode, formatKeyAttrId, formatId)
+		err := checkUnexpectedAttribute(formatNode, formatKeyAttrID, formatID)
 		if err != nil {
 			return nil, err
 		}
 
-		id, isId := formatNode.attributes[formatKeyAttrId]
-		formatStr, isFormat := formatNode.attributes[formatAttrId]
-		if !isId {
-			return nil, errors.New("Format has no '" + formatKeyAttrId + "' attribute")
+		id, isID := formatNode.attributes[formatKeyAttrID]
+		formatStr, isFormat := formatNode.attributes[formatAttrID]
+		if !isID {
+			return nil, errors.New("format has no '" + formatKeyAttrID + "' attribute")
 		}
 		if !isFormat {
-			return nil, errors.New("Format[" + id + "] has no '" + formatAttrId + "' attribute")
+			return nil, errors.New("format[" + id + "] has no '" + formatAttrID + "' attribute")
 		}
 
 		formatter, err := newFormatter(formatStr)
@@ -421,7 +506,7 @@ func getloggerTypeFromStringData(config *xmlNode) (logType loggerTypeFromString,
 	logType, found := getLoggerTypeFromString(logTypeStr)
 
 	if !found {
-		return 0, nil, errors.New(fmt.Sprintf("Unknown logger type: %s", logTypeStr))
+		return 0, nil, fmt.Errorf("unknown logger type: %s", logTypeStr)
 	}
 
 	if logType == asyncTimerloggerTypeFromString {
@@ -474,17 +559,17 @@ func getloggerTypeFromStringData(config *xmlNode) (logType loggerTypeFromString,
 	return logType, logData, nil
 }
 
-func getOutputsTree(config *xmlNode, formats map[string]*formatter) (dispatcherInterface, error) {
+func getOutputsTree(config *xmlNode, formats map[string]*formatter, cfg *CfgParseParams) (dispatcherInterface, error) {
 	var outputsNode *xmlNode
 	for _, child := range config.children {
-		if child.name == outputsId {
+		if child.name == outputsID {
 			outputsNode = child
 			break
 		}
 	}
 
 	if outputsNode != nil {
-		err := checkUnexpectedAttribute(outputsNode, outputFormatId)
+		err := checkUnexpectedAttribute(outputsNode, outputFormatID)
 		if err != nil {
 			return nil, err
 		}
@@ -494,7 +579,7 @@ func getOutputsTree(config *xmlNode, formats map[string]*formatter) (dispatcherI
 			return nil, err
 		}
 
-		output, err := createSplitter(outputsNode, formatter, formats)
+		output, err := createSplitter(outputsNode, formatter, formats, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -513,35 +598,35 @@ func getOutputsTree(config *xmlNode, formats map[string]*formatter) (dispatcherI
 }
 
 func getCurrentFormat(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter) (*formatter, error) {
-	formatId, isFormatId := node.attributes[outputFormatId]
-	if !isFormatId {
+	formatID, isFormatID := node.attributes[outputFormatID]
+	if !isFormatID {
 		return formatFromParent, nil
 	}
 
-	format, ok := formats[formatId]
+	format, ok := formats[formatID]
 	if ok {
 		return format, nil
 	}
 
 	// Test for predefined format match
-	pdFormat, pdOk := predefinedFormats[formatId]
+	pdFormat, pdOk := predefinedFormats[formatID]
 
 	if !pdOk {
-		return nil, errors.New("Formatid = '" + formatId + "' doesn't exist")
+		return nil, errors.New("formatid = '" + formatID + "' doesn't exist")
 	}
 
 	return pdFormat, nil
 }
 
-func createInnerReceivers(node *xmlNode, format *formatter, formats map[string]*formatter) ([]interface{}, error) {
-	outputs := make([]interface{}, 0)
+func createInnerReceivers(node *xmlNode, format *formatter, formats map[string]*formatter, cfg *CfgParseParams) ([]interface{}, error) {
+	var outputs []interface{}
 	for _, childNode := range node.children {
 		entry, ok := elementMap[childNode.name]
 		if !ok {
-			return nil, errors.New("Unnknown tag '" + childNode.name + "' in outputs section")
+			return nil, errors.New("unnknown tag '" + childNode.name + "' in outputs section")
 		}
 
-		output, err := entry.constructor(childNode, format, formats)
+		output, err := entry.constructor(childNode, format, formats, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -552,14 +637,14 @@ func createInnerReceivers(node *xmlNode, format *formatter, formats map[string]*
 	return outputs, nil
 }
 
-func createSplitter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter) (interface{}, error) {
-	err := checkUnexpectedAttribute(node, outputFormatId)
+func createSplitter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter, cfg *CfgParseParams) (interface{}, error) {
+	err := checkUnexpectedAttribute(node, outputFormatID)
 	if err != nil {
 		return nil, err
 	}
 
 	if !node.hasChildren() {
-		return nil, nodeMustHaveChildrenError
+		return nil, errNodeMustHaveChildren
 	}
 
 	currentFormat, err := getCurrentFormat(node, formatFromParent, formats)
@@ -567,7 +652,7 @@ func createSplitter(node *xmlNode, formatFromParent *formatter, formats map[stri
 		return nil, err
 	}
 
-	receivers, err := createInnerReceivers(node, currentFormat, formats)
+	receivers, err := createInnerReceivers(node, currentFormat, formats, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -575,14 +660,68 @@ func createSplitter(node *xmlNode, formatFromParent *formatter, formats map[stri
 	return newSplitDispatcher(currentFormat, receivers)
 }
 
-func createFilter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter) (interface{}, error) {
-	err := checkUnexpectedAttribute(node, outputFormatId, filterLevelsAttrId)
+func createCustomReceiver(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter, cfg *CfgParseParams) (interface{}, error) {
+	dataCustomPrefixes := make(map[string]string)
+	// Expecting only 'formatid', 'name' and 'data-' attrs
+	for attr, attrval := range node.attributes {
+		isExpected := false
+		if attr == outputFormatID ||
+			attr == customNameAttrID {
+			isExpected = true
+		}
+		if strings.HasPrefix(attr, customNameDataAttrPrefix) {
+			dataCustomPrefixes[attr[len(customNameDataAttrPrefix):]] = attrval
+			isExpected = true
+		}
+		if !isExpected {
+			return nil, newUnexpectedAttributeError(node.name, attr)
+		}
+	}
+
+	if node.hasChildren() {
+		return nil, errNodeCannotHaveChildren
+	}
+	customName, hasCustomName := node.attributes[customNameAttrID]
+	if !hasCustomName {
+		return nil, newMissingArgumentError(node.name, customNameAttrID)
+	}
+	currentFormat, err := getCurrentFormat(node, formatFromParent, formats)
+	if err != nil {
+		return nil, err
+	}
+	args := CustomReceiverInitArgs{
+		XmlCustomAttrs: dataCustomPrefixes,
+	}
+
+	if cfg != nil && cfg.CustomReceiverProducers != nil {
+		if prod, ok := cfg.CustomReceiverProducers[customName]; ok {
+			rec, err := prod(args)
+			if err != nil {
+				return nil, err
+			}
+			creceiver, err := newCustomReceiverDispatcherByValue(currentFormat, rec, customName, args)
+			if err != nil {
+				return nil, err
+			}
+			err = rec.AfterParse(args)
+			if err != nil {
+				return nil, err
+			}
+			return creceiver, nil
+		}
+	}
+
+	return newCustomReceiverDispatcher(currentFormat, customName, args)
+}
+
+func createFilter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter, cfg *CfgParseParams) (interface{}, error) {
+	err := checkUnexpectedAttribute(node, outputFormatID, filterLevelsAttrID)
 	if err != nil {
 		return nil, err
 	}
 
 	if !node.hasChildren() {
-		return nil, nodeMustHaveChildrenError
+		return nil, errNodeMustHaveChildren
 	}
 
 	currentFormat, err := getCurrentFormat(node, formatFromParent, formats)
@@ -590,9 +729,9 @@ func createFilter(node *xmlNode, formatFromParent *formatter, formats map[string
 		return nil, err
 	}
 
-	levelsStr, isLevels := node.attributes[filterLevelsAttrId]
+	levelsStr, isLevels := node.attributes[filterLevelsAttrID]
 	if !isLevels {
-		return nil, newMissingArgumentError(node.name, filterLevelsAttrId)
+		return nil, newMissingArgumentError(node.name, filterLevelsAttrID)
 	}
 
 	levels, err := parseLevels(levelsStr)
@@ -600,7 +739,7 @@ func createFilter(node *xmlNode, formatFromParent *formatter, formats map[string
 		return nil, err
 	}
 
-	receivers, err := createInnerReceivers(node, currentFormat, formats)
+	receivers, err := createInnerReceivers(node, currentFormat, formats, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -608,14 +747,14 @@ func createFilter(node *xmlNode, formatFromParent *formatter, formats map[string
 	return newFilterDispatcher(currentFormat, receivers, levels...)
 }
 
-func createfileWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter) (interface{}, error) {
-	err := checkUnexpectedAttribute(node, outputFormatId, pathId)
+func createfileWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter, cfg *CfgParseParams) (interface{}, error) {
+	err := checkUnexpectedAttribute(node, outputFormatID, pathID)
 	if err != nil {
 		return nil, err
 	}
 
 	if node.hasChildren() {
-		return nil, nodeCannotHaveChildrenError
+		return nil, errNodeCannotHaveChildren
 	}
 
 	currentFormat, err := getCurrentFormat(node, formatFromParent, formats)
@@ -623,9 +762,9 @@ func createfileWriter(node *xmlNode, formatFromParent *formatter, formats map[st
 		return nil, err
 	}
 
-	path, isPath := node.attributes[pathId]
+	path, isPath := node.attributes[pathID]
 	if !isPath {
-		return nil, newMissingArgumentError(node.name, pathId)
+		return nil, newMissingArgumentError(node.name, pathID)
 	}
 
 	fileWriter, err := newFileWriter(path)
@@ -637,76 +776,101 @@ func createfileWriter(node *xmlNode, formatFromParent *formatter, formats map[st
 }
 
 // Creates new SMTP writer if encountered in the config file.
-func createSmtpWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter) (interface{}, error) {
-	err := checkUnexpectedAttribute(node, outputFormatId, senderaddressId, senderNameId, hostNameId, hostPortId, userNameId, userPassId)
+func createSMTPWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter, cfg *CfgParseParams) (interface{}, error) {
+	err := checkUnexpectedAttribute(node, outputFormatID, senderaddressID, senderNameID, hostNameID, hostPortID, userNameID, userPassID, subjectID)
 	if err != nil {
 		return nil, err
 	}
 	// Node must have children.
 	if !node.hasChildren() {
-		return nil, nodeMustHaveChildrenError
+		return nil, errNodeMustHaveChildren
 	}
 	currentFormat, err := getCurrentFormat(node, formatFromParent, formats)
 	if err != nil {
 		return nil, err
 	}
-	senderAddress, ok := node.attributes[senderaddressId]
+	senderAddress, ok := node.attributes[senderaddressID]
 	if !ok {
-		return nil, newMissingArgumentError(node.name, senderaddressId)
+		return nil, newMissingArgumentError(node.name, senderaddressID)
 	}
-	senderName, ok := node.attributes[senderNameId]
+	senderName, ok := node.attributes[senderNameID]
 	if !ok {
-		return nil, newMissingArgumentError(node.name, senderNameId)
+		return nil, newMissingArgumentError(node.name, senderNameID)
 	}
 	// Process child nodes scanning for recipient email addresses and/or CA certificate paths.
 	var recipientAddresses []string
 	var caCertDirPaths []string
+	var mailHeaders []string
 	for _, childNode := range node.children {
 		switch childNode.name {
 		// Extract recipient address from child nodes.
-		case recipientId:
-			address, ok := childNode.attributes[addressId]
+		case recipientID:
+			address, ok := childNode.attributes[addressID]
 			if !ok {
-				return nil, newMissingArgumentError(childNode.name, addressId)
+				return nil, newMissingArgumentError(childNode.name, addressID)
 			}
 			recipientAddresses = append(recipientAddresses, address)
 		// Extract CA certificate file path from child nodes.
-		case cACertDirpathId:
-			path, ok := childNode.attributes[pathId]
+		case cACertDirpathID:
+			path, ok := childNode.attributes[pathID]
 			if !ok {
-				return nil, newMissingArgumentError(childNode.name, pathId)
+				return nil, newMissingArgumentError(childNode.name, pathID)
 			}
 			caCertDirPaths = append(caCertDirPaths, path)
+
+		// Extract email headers from child nodes.
+		case mailHeaderID:
+			headerName, ok := childNode.attributes[mailHeaderNameID]
+			if !ok {
+				return nil, newMissingArgumentError(childNode.name, mailHeaderNameID)
+			}
+
+			headerValue, ok := childNode.attributes[mailHeaderValueID]
+			if !ok {
+				return nil, newMissingArgumentError(childNode.name, mailHeaderValueID)
+			}
+
+			// Build header line
+			mailHeaders = append(mailHeaders, fmt.Sprintf("%s: %s", headerName, headerValue))
 		default:
 			return nil, newUnexpectedChildElementError(childNode.name)
 		}
 	}
-	hostName, ok := node.attributes[hostNameId]
+	hostName, ok := node.attributes[hostNameID]
 	if !ok {
-		return nil, newMissingArgumentError(node.name, hostNameId)
+		return nil, newMissingArgumentError(node.name, hostNameID)
 	}
 
-	hostPort, ok := node.attributes[hostPortId]
+	hostPort, ok := node.attributes[hostPortID]
 	if !ok {
-		return nil, newMissingArgumentError(node.name, hostPortId)
+		return nil, newMissingArgumentError(node.name, hostPortID)
 	}
 
 	// Check if the string can really be converted into int.
 	if _, err := strconv.Atoi(hostPort); err != nil {
-		return nil, errors.New("Invalid host port number")
+		return nil, errors.New("invalid host port number")
 	}
 
-	userName, ok := node.attributes[userNameId]
+	userName, ok := node.attributes[userNameID]
 	if !ok {
-		return nil, newMissingArgumentError(node.name, userNameId)
+		return nil, newMissingArgumentError(node.name, userNameID)
 	}
 
-	userPass, ok := node.attributes[userPassId]
+	userPass, ok := node.attributes[userPassID]
 	if !ok {
-		return nil, newMissingArgumentError(node.name, userPassId)
+		return nil, newMissingArgumentError(node.name, userPassID)
 	}
 
-	smtpWriter := newSmtpWriter(
+	// subject is optionally set by configuration.
+	// default value is defined by DefaultSubjectPhrase constant in the writers_smtpwriter.go
+	var subjectPhrase = DefaultSubjectPhrase
+
+	subject, ok := node.attributes[subjectID]
+	if ok {
+		subjectPhrase = subject
+	}
+
+	smtpWriter := newSMTPWriter(
 		senderAddress,
 		senderName,
 		recipientAddresses,
@@ -715,19 +879,21 @@ func createSmtpWriter(node *xmlNode, formatFromParent *formatter, formats map[st
 		userName,
 		userPass,
 		caCertDirPaths,
+		subjectPhrase,
+		mailHeaders,
 	)
 
 	return newFormattedWriter(smtpWriter, currentFormat)
 }
 
-func createConsoleWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter) (interface{}, error) {
-	err := checkUnexpectedAttribute(node, outputFormatId)
+func createConsoleWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter, cfg *CfgParseParams) (interface{}, error) {
+	err := checkUnexpectedAttribute(node, outputFormatID)
 	if err != nil {
 		return nil, err
 	}
 
 	if node.hasChildren() {
-		return nil, nodeCannotHaveChildrenError
+		return nil, errNodeCannotHaveChildren
 	}
 
 	currentFormat, err := getCurrentFormat(node, formatFromParent, formats)
@@ -743,12 +909,12 @@ func createConsoleWriter(node *xmlNode, formatFromParent *formatter, formats map
 	return newFormattedWriter(consoleWriter, currentFormat)
 }
 
-func createconnWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter) (interface{}, error) {
+func createconnWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter, cfg *CfgParseParams) (interface{}, error) {
 	if node.hasChildren() {
-		return nil, nodeCannotHaveChildrenError
+		return nil, errNodeCannotHaveChildren
 	}
 
-	err := checkUnexpectedAttribute(node, outputFormatId, connWriterAddrAttr, connWriterNetAttr, connWriterReconnectOnMsgAttr)
+	err := checkUnexpectedAttribute(node, outputFormatID, connWriterAddrAttr, connWriterNetAttr, connWriterReconnectOnMsgAttr, connWriterUseTLSAttr, connWriterInsecureSkipVerifyAttr)
 	if err != nil {
 		return nil, err
 	}
@@ -776,7 +942,35 @@ func createconnWriter(node *xmlNode, formatFromParent *formatter, formats map[st
 		} else if reconnectOnMsgStr == "false" {
 			reconnectOnMsg = false
 		} else {
-			return nil, errors.New("Node '" + node.name + "' has incorrect '" + connWriterReconnectOnMsgAttr + "' attribute value")
+			return nil, errors.New("node '" + node.name + "' has incorrect '" + connWriterReconnectOnMsgAttr + "' attribute value")
+		}
+	}
+
+	useTLS := false
+	useTLSStr, isUseTLSStr := node.attributes[connWriterUseTLSAttr]
+	if isUseTLSStr {
+		if useTLSStr == "true" {
+			useTLS = true
+		} else if useTLSStr == "false" {
+			useTLS = false
+		} else {
+			return nil, errors.New("node '" + node.name + "' has incorrect '" + connWriterUseTLSAttr + "' attribute value")
+		}
+		if useTLS {
+			insecureSkipVerify := false
+			insecureSkipVerifyStr, isInsecureSkipVerify := node.attributes[connWriterInsecureSkipVerifyAttr]
+			if isInsecureSkipVerify {
+				if insecureSkipVerifyStr == "true" {
+					insecureSkipVerify = true
+				} else if insecureSkipVerifyStr == "false" {
+					insecureSkipVerify = false
+				} else {
+					return nil, errors.New("node '" + node.name + "' has incorrect '" + connWriterInsecureSkipVerifyAttr + "' attribute value")
+				}
+			}
+			config := tls.Config{InsecureSkipVerify: insecureSkipVerify}
+			connWriter := newTLSWriter(net, addr, reconnectOnMsg, &config)
+			return newFormattedWriter(connWriter, currentFormat)
 		}
 	}
 
@@ -785,9 +979,9 @@ func createconnWriter(node *xmlNode, formatFromParent *formatter, formats map[st
 	return newFormattedWriter(connWriter, currentFormat)
 }
 
-func createRollingFileWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter) (interface{}, error) {
+func createRollingFileWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter, cfg *CfgParseParams) (interface{}, error) {
 	if node.hasChildren() {
-		return nil, nodeCannotHaveChildrenError
+		return nil, errNodeCannotHaveChildren
 	}
 
 	rollingTypeStr, isRollingType := node.attributes[rollingFileTypeAttr]
@@ -797,7 +991,7 @@ func createRollingFileWriter(node *xmlNode, formatFromParent *formatter, formats
 
 	rollingType, ok := rollingTypeFromString(rollingTypeStr)
 	if !ok {
-		return nil, errors.New("Unknown rolling file type: " + rollingTypeStr)
+		return nil, errors.New("unknown rolling file type: " + rollingTypeStr)
 	}
 
 	currentFormat, err := getCurrentFormat(node, formatFromParent, formats)
@@ -812,7 +1006,7 @@ func createRollingFileWriter(node *xmlNode, formatFromParent *formatter, formats
 
 	rollingArchiveStr, archiveAttrExists := node.attributes[rollingFileArchiveAttr]
 
-	var rArchiveType rollingArchiveTypes
+	var rArchiveType rollingArchiveType
 	var rArchivePath string
 	if !archiveAttrExists {
 		rArchiveType = rollingArchiveNone
@@ -820,7 +1014,7 @@ func createRollingFileWriter(node *xmlNode, formatFromParent *formatter, formats
 	} else {
 		rArchiveType, ok = rollingArchiveTypeFromString(rollingArchiveStr)
 		if !ok {
-			return nil, errors.New("Unknown rolling archive type: " + rollingArchiveStr)
+			return nil, errors.New("unknown rolling archive type: " + rollingArchiveStr)
 		}
 
 		if rArchiveType == rollingArchiveNone {
@@ -830,23 +1024,34 @@ func createRollingFileWriter(node *xmlNode, formatFromParent *formatter, formats
 			if !ok {
 				rArchivePath, ok = rollingArchiveTypesDefaultNames[rArchiveType]
 				if !ok {
-					return nil, fmt.Errorf("Cannot get default filename for archive type = %v",
+					return nil, fmt.Errorf("cannot get default filename for archive type = %v",
 						rArchiveType)
 				}
 			}
 		}
 	}
 
+	nameMode := rollingNameMode(rollingNameModePostfix)
+	nameModeStr, ok := node.attributes[rollingFileNameModeAttr]
+	if ok {
+		mode, found := rollingNameModeFromString(nameModeStr)
+		if !found {
+			return nil, errors.New("unknown rolling filename mode: " + nameModeStr)
+		} else {
+			nameMode = mode
+		}
+	}
+
 	if rollingType == rollingTypeSize {
-		err := checkUnexpectedAttribute(node, outputFormatId, rollingFileTypeAttr, rollingFilePathAttr,
+		err := checkUnexpectedAttribute(node, outputFormatID, rollingFileTypeAttr, rollingFilePathAttr,
 			rollingFileMaxSizeAttr, rollingFileMaxRollsAttr, rollingFileArchiveAttr,
-			rollingFileArchivePathAttr)
+			rollingFileArchivePathAttr, rollingFileNameModeAttr)
 		if err != nil {
 			return nil, err
 		}
 
-		maxSizeStr, isMaxSize := node.attributes[rollingFileMaxSizeAttr]
-		if !isMaxSize {
+		maxSizeStr, ok := node.attributes[rollingFileMaxSizeAttr]
+		if !ok {
 			return nil, newMissingArgumentError(node.name, rollingFileMaxSizeAttr)
 		}
 
@@ -855,37 +1060,45 @@ func createRollingFileWriter(node *xmlNode, formatFromParent *formatter, formats
 			return nil, err
 		}
 
-		maxRollsStr, isMaxRolls := node.attributes[rollingFileMaxRollsAttr]
-		if !isMaxRolls {
-			return nil, newMissingArgumentError(node.name, rollingFileMaxRollsAttr)
+		maxRolls := 0
+		maxRollsStr, ok := node.attributes[rollingFileMaxRollsAttr]
+		if ok {
+			maxRolls, err = strconv.Atoi(maxRollsStr)
+			if err != nil {
+				return nil, err
+			}
 		}
 
-		maxRolls, err := strconv.Atoi(maxRollsStr)
-		if err != nil {
-			return nil, err
-		}
-
-		rollingWriter, err := newRollingFileWriterSize(path, rArchiveType, rArchivePath, maxSize, maxRolls)
+		rollingWriter, err := newRollingFileWriterSize(path, rArchiveType, rArchivePath, maxSize, maxRolls, nameMode)
 		if err != nil {
 			return nil, err
 		}
 
 		return newFormattedWriter(rollingWriter, currentFormat)
 
-	} else if rollingType == rollingTypeDate {
-		err := checkUnexpectedAttribute(node, outputFormatId, rollingFileTypeAttr, rollingFilePathAttr,
-			rollingFileDataPatternAttr, rollingFileArchiveAttr,
-			rollingFileArchivePathAttr)
+	} else if rollingType == rollingTypeTime {
+		err := checkUnexpectedAttribute(node, outputFormatID, rollingFileTypeAttr, rollingFilePathAttr,
+			rollingFileDataPatternAttr, rollingFileArchiveAttr, rollingFileMaxRollsAttr,
+			rollingFileArchivePathAttr, rollingFileNameModeAttr)
 		if err != nil {
 			return nil, err
 		}
 
-		dataPattern, isDataPattern := node.attributes[rollingFileDataPatternAttr]
-		if !isDataPattern {
+		maxRolls := 0
+		maxRollsStr, ok := node.attributes[rollingFileMaxRollsAttr]
+		if ok {
+			maxRolls, err = strconv.Atoi(maxRollsStr)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		dataPattern, ok := node.attributes[rollingFileDataPatternAttr]
+		if !ok {
 			return nil, newMissingArgumentError(node.name, rollingFileDataPatternAttr)
 		}
 
-		rollingWriter, err := newRollingFileWriterDate(path, rArchiveType, rArchivePath, dataPattern)
+		rollingWriter, err := newRollingFileWriterTime(path, rArchiveType, rArchivePath, maxRolls, dataPattern, rollingIntervalAny, nameMode)
 		if err != nil {
 			return nil, err
 		}
@@ -893,17 +1106,17 @@ func createRollingFileWriter(node *xmlNode, formatFromParent *formatter, formats
 		return newFormattedWriter(rollingWriter, currentFormat)
 	}
 
-	return nil, errors.New("Incorrect rolling writer type " + rollingTypeStr)
+	return nil, errors.New("incorrect rolling writer type " + rollingTypeStr)
 }
 
-func createbufferedWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter) (interface{}, error) {
-	err := checkUnexpectedAttribute(node, outputFormatId, bufferedSizeAttr, bufferedFlushPeriodAttr)
+func createbufferedWriter(node *xmlNode, formatFromParent *formatter, formats map[string]*formatter, cfg *CfgParseParams) (interface{}, error) {
+	err := checkUnexpectedAttribute(node, outputFormatID, bufferedSizeAttr, bufferedFlushPeriodAttr)
 	if err != nil {
 		return nil, err
 	}
 
 	if !node.hasChildren() {
-		return nil, nodeMustHaveChildrenError
+		return nil, errNodeMustHaveChildren
 	}
 
 	currentFormat, err := getCurrentFormat(node, formatFromParent, formats)
@@ -931,19 +1144,19 @@ func createbufferedWriter(node *xmlNode, formatFromParent *formatter, formats ma
 	}
 
 	// Inner writer couldn't have its own format, so we pass 'currentFormat' as its parent format
-	receivers, err := createInnerReceivers(node, currentFormat, formats)
+	receivers, err := createInnerReceivers(node, currentFormat, formats, cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	formattedWriter, ok := receivers[0].(*formattedWriter)
 	if !ok {
-		return nil, errors.New("Buffered writer's child is not writer")
+		return nil, errors.New("buffered writer's child is not writer")
 	}
 
 	// ... and then we check that it hasn't changed
 	if formattedWriter.Format() != currentFormat {
-		return nil, errors.New("Inner writer cannot have his own format")
+		return nil, errors.New("inner writer cannot have his own format")
 	}
 
 	bufferedWriter, err := newBufferedWriter(formattedWriter.Writer(), size, time.Duration(flushPeriod))
@@ -956,7 +1169,7 @@ func createbufferedWriter(node *xmlNode, formatFromParent *formatter, formats ma
 
 // Returns an error if node has any attributes not listed in expectedAttrs.
 func checkUnexpectedAttribute(node *xmlNode, expectedAttrs ...string) error {
-	for attr, _ := range node.attributes {
+	for attr := range node.attributes {
 		isExpected := false
 		for _, expected := range expectedAttrs {
 			if attr == expected {

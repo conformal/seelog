@@ -1,16 +1,16 @@
 // Copyright (c) 2012 - Cloud Instruments Co., Ltd.
-// 
+//
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met: 
-// 
+// modification, are permitted provided that the following conditions are met:
+//
 // 1. Redistributions of source code must retain the above copyright notice, this
-//    list of conditions and the following disclaimer. 
+//    list of conditions and the following disclaimer.
 // 2. Redistributions in binary form must reproduce the above copyright notice,
 //    this list of conditions and the following disclaimer in the documentation
-//    and/or other materials provided with the distribution. 
-// 
+//    and/or other materials provided with the distribution.
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -32,10 +32,17 @@ import (
 )
 
 const (
-	shortPath    = "common_context_test.go"
-	commonPrefix = "github.com/conformal/seelog."
+	shortPath = "common_context_test.go"
 )
 
+func init() {
+	// Here we remove the hardcoding of the package name which breaks forks and some CI environments
+	// such as jenkins
+	_, _, funcName, _, _ := extractCallerInfo(1)
+	commonPrefix = funcName[:strings.Index(funcName, "init·")]
+}
+
+var commonPrefix string
 var testFullPath string
 
 func fullPath(t *testing.T) string {
@@ -53,6 +60,7 @@ func fullPath(t *testing.T) string {
 }
 
 func TestContext(t *testing.T) {
+
 	context, err := currentContext()
 
 	nameFunc := commonPrefix + "TestContext"
@@ -68,22 +76,22 @@ func TestContext(t *testing.T) {
 	if nf := context.Func(); nf != nameFunc {
 		// Account for a case when the func full path is bigger than commonPrefix but includes it.
 		if !strings.HasSuffix(nf, nameFunc) {
-			t.Errorf("Expected context.Func == %s ; got %s", nameFunc, context.Func())
+			t.Errorf("expected context.Func == %s ; got %s", nameFunc, context.Func())
 		}
 	}
 
 	if context.ShortPath() != shortPath {
-		t.Errorf("Expected context.ShortPath == %s ; got %s", shortPath, context.ShortPath())
+		t.Errorf("expected context.ShortPath == %s ; got %s", shortPath, context.ShortPath())
 	}
 
 	fp := fullPath(t)
 
 	if context.FullPath() != fp {
-		t.Errorf("Expected context.FullPath == %s ; got %s", fp, context.FullPath())
+		t.Errorf("expected context.FullPath == %s ; got %s", fp, context.FullPath())
 	}
 }
 
-func innerContext() (context logContextInterface, err error) {
+func innerContext() (context LogContextInterface, err error) {
 	return currentContext()
 }
 
@@ -103,17 +111,17 @@ func TestInnerContext(t *testing.T) {
 	if cf := context.Func(); cf != nameFunc {
 		// Account for a case when the func full path is bigger than commonPrefix but includes it.
 		if !strings.HasSuffix(cf, nameFunc) {
-			t.Errorf("Expected context.Func == %s ; got %s", nameFunc, context.Func())
+			t.Errorf("expected context.Func == %s ; got %s", nameFunc, context.Func())
 		}
 	}
 
 	if context.ShortPath() != shortPath {
-		t.Errorf("Expected context.ShortPath == %s ; got %s", shortPath, context.ShortPath())
+		t.Errorf("expected context.ShortPath == %s ; got %s", shortPath, context.ShortPath())
 	}
 
 	fp := fullPath(t)
 
 	if context.FullPath() != fp {
-		t.Errorf("Expected context.FullPath == %s ; got %s", fp, context.FullPath())
+		t.Errorf("expected context.FullPath == %s ; got %s", fp, context.FullPath())
 	}
 }

@@ -1,16 +1,16 @@
 // Copyright (c) 2012 - Cloud Instruments Co., Ltd.
-// 
+//
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met: 
-// 
+// modification, are permitted provided that the following conditions are met:
+//
 // 1. Redistributions of source code must retain the above copyright notice, this
-//    list of conditions and the following disclaimer. 
+//    list of conditions and the following disclaimer.
 // 2. Redistributions in binary form must reproduce the above copyright notice,
 //    this list of conditions and the following disclaimer in the documentation
-//    and/or other materials provided with the distribution. 
-// 
+//    and/or other materials provided with the distribution.
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -42,58 +42,58 @@ func TestConfig(t *testing.T) {
 
 	conf, err := configFromReader(strings.NewReader(testConfig))
 	if err != nil {
-		t.Errorf("Parse error: %s\n", err.Error())
+		t.Errorf("parse error: %s\n", err.Error())
 		return
 	}
 
 	context, err := currentContext()
 	if err != nil {
-		t.Errorf("Cannot get current context:" + err.Error())
+		t.Errorf("cannot get current context:" + err.Error())
 		return
 	}
 	firstContext, err := getFirstContext()
 	if err != nil {
-		t.Errorf("Cannot get current context:" + err.Error())
+		t.Errorf("cannot get current context:" + err.Error())
 		return
 	}
 	secondContext, err := getSecondContext()
 	if err != nil {
-		t.Errorf("Cannot get current context:" + err.Error())
+		t.Errorf("cannot get current context:" + err.Error())
 		return
 	}
 
 	if !conf.IsAllowed(TraceLvl, context) {
-		t.Errorf("Error: deny trace in current context")
+		t.Errorf("error: deny trace in current context")
 	}
 	if conf.IsAllowed(TraceLvl, firstContext) {
-		t.Errorf("Error: allow trace in first context")
+		t.Errorf("error: allow trace in first context")
 	}
 	if conf.IsAllowed(ErrorLvl, context) {
-		t.Errorf("Error: allow error in current context")
+		t.Errorf("error: allow error in current context")
 	}
 	if !conf.IsAllowed(ErrorLvl, secondContext) {
-		t.Errorf("Error: deny error in second context")
+		t.Errorf("error: deny error in second context")
 	}
 
 	// cache test
 	if !conf.IsAllowed(TraceLvl, context) {
-		t.Errorf("Error: deny trace in current context")
+		t.Errorf("error: deny trace in current context")
 	}
 	if conf.IsAllowed(TraceLvl, firstContext) {
-		t.Errorf("Error: allow trace in first context")
+		t.Errorf("error: allow trace in first context")
 	}
 	if conf.IsAllowed(ErrorLvl, context) {
-		t.Errorf("Error: allow error in current context")
+		t.Errorf("error: allow error in current context")
 	}
 	if !conf.IsAllowed(ErrorLvl, secondContext) {
-		t.Errorf("Error: deny error in second context")
+		t.Errorf("error: deny error in second context")
 	}
 }
 
-func getFirstContext() (logContextInterface, error) {
+func getFirstContext() (LogContextInterface, error) {
 	return currentContext()
 }
 
-func getSecondContext() (logContextInterface, error) {
+func getSecondContext() (LogContextInterface, error) {
 	return currentContext()
 }

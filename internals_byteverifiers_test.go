@@ -1,16 +1,16 @@
 // Copyright (c) 2012 - Cloud Instruments Co., Ltd.
-// 
+//
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met: 
-// 
+// modification, are permitted provided that the following conditions are met:
+//
 // 1. Redistributions of source code must retain the above copyright notice, this
-//    list of conditions and the following disclaimer. 
+//    list of conditions and the following disclaimer.
 // 2. Redistributions in binary form must reproduce the above copyright notice,
 //    this list of conditions and the following disclaimer in the documentation
-//    and/or other materials provided with the distribution. 
-// 
+//    and/or other materials provided with the distribution.
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -30,7 +30,7 @@ import (
 	"testing"
 )
 
-// bytesVerifier is a byte receiver which is used for correct input testing. 
+// bytesVerifier is a byte receiver which is used for correct input testing.
 // It allows to compare expected result and actual result in context of received bytes.
 type bytesVerifier struct {
 	expectedBytes   []byte // bytes that are expected to be written in next Write call
@@ -41,7 +41,7 @@ type bytesVerifier struct {
 
 func newBytesVerifier(t *testing.T) (*bytesVerifier, error) {
 	if t == nil {
-		return nil, errors.New("Testing environment param is nil")
+		return nil, errors.New("testing environment param is nil")
 	}
 
 	verifier := new(bytesVerifier)
@@ -54,7 +54,7 @@ func newBytesVerifier(t *testing.T) (*bytesVerifier, error) {
 // After Write call, waitingForInput is set to false.
 func (verifier *bytesVerifier) Write(bytes []byte) (n int, err error) {
 	if !verifier.waitingForInput {
-		verifier.testEnv.Errorf("Unexpected input: %v", string(bytes))
+		verifier.testEnv.Errorf("unexpected input: %v", string(bytes))
 		return
 	}
 
@@ -63,7 +63,7 @@ func (verifier *bytesVerifier) Write(bytes []byte) (n int, err error) {
 
 	if verifier.expectedBytes != nil {
 		if bytes == nil {
-			verifier.testEnv.Errorf("Incoming 'bytes' is nil")
+			verifier.testEnv.Errorf("incoming 'bytes' is nil")
 		} else {
 			if len(bytes) != len(verifier.expectedBytes) {
 				verifier.testEnv.Errorf("'Bytes' has unexpected len. Expected: %d. Got: %d. . Expected string: %q. Got: %q",
@@ -71,7 +71,7 @@ func (verifier *bytesVerifier) Write(bytes []byte) (n int, err error) {
 			} else {
 				for i := 0; i < len(bytes); i++ {
 					if verifier.expectedBytes[i] != bytes[i] {
-						verifier.testEnv.Errorf("Incorrect data on position %d. Expected: %d. Got: %d. Expected string: %q. Got: %q",
+						verifier.testEnv.Errorf("incorrect data on position %d. Expected: %d. Got: %d. Expected string: %q. Got: %q",
 							i, verifier.expectedBytes[i], bytes[i], string(verifier.expectedBytes), string(bytes))
 						break
 					}
@@ -109,10 +109,10 @@ func (verifier *bytesVerifier) Close() error {
 type nullWriter struct {
 }
 
-func (this *nullWriter) Write(bytes []byte) (n int, err error) {
+func (writer *nullWriter) Write(bytes []byte) (n int, err error) {
 	return len(bytes), nil
 }
 
-func (this *nullWriter) Close() error {
+func (writer *nullWriter) Close() error {
 	return nil
 }

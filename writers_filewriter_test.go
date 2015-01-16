@@ -51,23 +51,23 @@ func simplefileWriterGetter(testCase *fileWriterTestCase) (io.WriteCloser, error
 }
 
 //===============================================================
-// ???
 type fileWriterTestCase struct {
 	files       []string
 	fileName    string
-	rollingType rollingTypes
+	rollingType rollingType
 	fileSize    int64
 	maxRolls    int
 	datePattern string
 	writeCount  int
 	resFiles    []string
+	nameMode    rollingNameMode
 }
 
 func createSimplefileWriterTestCase(fileName string, writeCount int) *fileWriterTestCase {
-	return &fileWriterTestCase{[]string{}, fileName, rollingTypeSize, 0, 0, "", writeCount, []string{fileName}}
+	return &fileWriterTestCase{[]string{}, fileName, rollingTypeSize, 0, 0, "", writeCount, []string{fileName}, 0}
 }
 
-var simplefileWriterTests []*fileWriterTestCase = []*fileWriterTestCase{
+var simplefileWriterTests = []*fileWriterTestCase{
 	createSimplefileWriterTestCase("log.testlog", 1),
 	createSimplefileWriterTestCase("log.testlog", 50),
 	createSimplefileWriterTestCase(filepath.Join("dir", "log.testlog"), 50),
@@ -101,12 +101,12 @@ func cleanupWriterTest(t *testing.T) {
 
 	for _, p := range toDel {
 		if err = tryRemoveFile(p); nil != err {
-			t.Errorf("Cannot remove file %s in test directory: %s", p, err.Error())
+			t.Errorf("cannot remove file %s in test directory: %s", p, err.Error())
 		}
 	}
 
 	if err = os.RemoveAll("dir"); nil != err {
-		t.Errorf("Cannot remove temp test directory: %s", err.Error())
+		t.Errorf("cannot remove temp test directory: %s", err.Error())
 	}
 }
 
@@ -134,10 +134,10 @@ func getWriterTestResultFiles() ([]string, error) {
 	return p, nil
 }
 
-func (this *fileWriterTester) testCase(testCase *fileWriterTestCase, testNum int) {
-	defer cleanupWriterTest(this.t)
+func (tester *fileWriterTester) testCase(testCase *fileWriterTestCase, testNum int) {
+	defer cleanupWriterTest(tester.t)
 
-	this.t.Logf("Start test  [%v]\n", testNum)
+	tester.t.Logf("Start test  [%v]\n", testNum)
 
 	for _, filePath := range testCase.files {
 		dir, _ := filepath.Split(filePath)
@@ -147,98 +147,98 @@ func (this *fileWriterTester) testCase(testCase *fileWriterTestCase, testNum int
 		if 0 != len(dir) {
 			err = os.MkdirAll(dir, defaultDirectoryPermissions)
 			if err != nil {
-				this.t.Error(err)
+				tester.t.Error(err)
 				return
 			}
 		}
 
 		fi, err := os.Create(filePath)
 		if err != nil {
-			this.t.Error(err)
+			tester.t.Error(err)
 			return
 		}
 
 		err = fi.Close()
 		if err != nil {
-			this.t.Error(err)
+			tester.t.Error(err)
 			return
 		}
 	}
 
-	fwc, err := this.writerGetter(testCase)
+	fwc, err := tester.writerGetter(testCase)
 	if err != nil {
-		this.t.Error(err)
+		tester.t.Error(err)
 		return
 	}
 	defer fwc.Close()
 
-	this.performWrite(fwc, testCase.writeCount)
+	tester.performWrite(fwc, testCase.writeCount)
 
 	files, err := getWriterTestResultFiles()
 	if err != nil {
-		this.t.Error(err)
+		tester.t.Error(err)
 		return
 	}
 
-	this.checkRequiredFilesExist(testCase, files)
-	this.checkJustRequiredFilesExist(testCase, files)
+	tester.checkRequiredFilesExist(testCase, files)
+	tester.checkJustRequiredFilesExist(testCase, files)
 
 }
 
-func (this *fileWriterTester) test() {
-	for i, tc := range this.testCases {
-		cleanupWriterTest(this.t)
-		this.testCase(tc, i)
+func (tester *fileWriterTester) test() {
+	for i, tc := range tester.testCases {
+		cleanupWriterTest(tester.t)
+		tester.testCase(tc, i)
 	}
 }
 
-func (this *fileWriterTester) performWrite(fileWriter io.Writer, count int) {
+func (tester *fileWriterTester) performWrite(fileWriter io.Writer, count int) {
 	for i := 0; i < count; i++ {
 		_, err := fileWriter.Write(bytesFileTest)
 
 		if err != nil {
-			this.t.Error(err)
+			tester.t.Error(err)
 			return
 		}
 	}
 }
 
-func (this *fileWriterTester) checkRequiredFilesExist(testCase *fileWriterTestCase, files []string) {
+func (tester *fileWriterTester) checkRequiredFilesExist(testCase *fileWriterTestCase, files []string) {
 	var found bool
 	for _, expected := range testCase.resFiles {
 		found = false
 		exAbs, err := filepath.Abs(expected)
 		if err != nil {
-			this.t.Errorf("filepath.Abs failed for %s", expected)
+			tester.t.Errorf("filepath.Abs failed for %s", expected)
 			continue
 		}
 
 		for _, f := range files {
 			if af, e := filepath.Abs(f); e == nil {
-				this.t.Log(af)
+				tester.t.Log(af)
 				if exAbs == af {
 					found = true
 					break
 				}
 			} else {
-				this.t.Errorf("filepath.Abs failed for %s", f)
+				tester.t.Errorf("filepath.Abs failed for %s", f)
 			}
 		}
 
 		if !found {
-			this.t.Errorf("Expected file: %s doesn't exist. Got %v\n", exAbs, files)
+			tester.t.Errorf("expected file: %s doesn't exist. Got %v\n", exAbs, files)
 		}
 	}
 }
 
-func (this *fileWriterTester) checkJustRequiredFilesExist(testCase *fileWriterTestCase, files []string) {
+func (tester *fileWriterTester) checkJustRequiredFilesExist(testCase *fileWriterTestCase, files []string) {
 	for _, f := range files {
 		found := false
 		for _, expected := range testCase.resFiles {
 
 			exAbs, err := filepath.Abs(expected)
 			if err != nil {
-				this.t.Errorf("filepath.Abs failed for %s", expected)
+				tester.t.Errorf("filepath.Abs failed for %s", expected)
 			} else {
 				if exAbs == f {
 					found = true
@@ -248,7 +248,7 @@ func (this *fileWriterTester) checkJustRequiredFilesExist(testCase *fileWriterTe
 		}
 
 		if !found {
-			this.t.Errorf("Unexpected file: %v", f)
+			tester.t.Errorf("unexpected file: %v", f)
 		}
 	}
 }

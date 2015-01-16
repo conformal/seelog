@@ -1,16 +1,16 @@
 // Copyright (c) 2012 - Cloud Instruments Co., Ltd.
-// 
+//
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met: 
-// 
+// modification, are permitted provided that the following conditions are met:
+//
 // 1. Redistributions of source code must retain the above copyright notice, this
-//    list of conditions and the following disclaimer. 
+//    list of conditions and the following disclaimer.
 // 2. Redistributions in binary form must reproduce the above copyright notice,
 //    this list of conditions and the following disclaimer in the documentation
-//    and/or other materials provided with the distribution. 
-// 
+//    and/or other materials provided with the distribution.
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,6 +25,7 @@
 package seelog
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -137,7 +138,7 @@ func TestFormats(t *testing.T) {
 		form, err := newFormatter(test.formatString)
 
 		if (err != nil) != test.errorExpected {
-			t.Errorf("Input: %s \nInput LL: %s\n* Expected error:%t Got error: %t\n",
+			t.Errorf("input: %s \nInput LL: %s\n* Expected error:%t Got error: %t\n",
 				test.input, test.inputLogLevel, test.errorExpected, (err != nil))
 			if err != nil {
 				t.Logf("%s\n", err.Error())
@@ -150,8 +151,8 @@ func TestFormats(t *testing.T) {
 		msg := form.Format(test.input, test.inputLogLevel, context)
 
 		if err == nil && msg != test.expectedOutput {
-			t.Errorf("Format: %s \nInput: %s \nInput LL: %s\n* Expected: %s \n* Got: %s\n", 
-				test.formatString, test.input,	test.inputLogLevel, test.expectedOutput, msg)
+			t.Errorf("format: %s \nInput: %s \nInput LL: %s\n* Expected: %s \n* Got: %s\n",
+				test.formatString, test.input, test.inputLogLevel, test.expectedOutput, msg)
 		}
 	}
 }
@@ -163,7 +164,7 @@ func TestDateFormat(t *testing.T) {
 	}
 }
 
-func TestDateParametrizedFormat(t *testing.T) {
+func TestDateParameterizedFormat(t *testing.T) {
 	testFormat := "Mon Jan 02 2006 15:04:05"
 	preciseForamt := "Mon Jan 02 2006 15:04:05.000"
 
@@ -183,6 +184,48 @@ func TestDateParametrizedFormat(t *testing.T) {
 	dateAfter := time.Now().Format(testFormat)
 
 	if !strings.HasPrefix(msg, dateBefore) && !strings.HasPrefix(msg, dateAfter) {
-		t.Errorf("Incorrect message: %v. Expected %v or %v", msg, dateBefore, dateAfter)
+		t.Errorf("incorrect message: %v. Expected %v or %v", msg, dateBefore, dateAfter)
+	}
+}
+
+func createTestFormatter(format string) FormatterFunc {
+	return func(message string, level LogLevel, context LogContextInterface) interface{} {
+		return "TEST " + context.Func() + " TEST"
+	}
+}
+
+func TestCustomFormatterRegistration(t *testing.T) {
+	err := RegisterCustomFormatter("Level", createTestFormatter)
+	if err == nil {
+		t.Errorf("expected an error when trying to register a custom formatter with a reserved alias")
+	}
+	err = RegisterCustomFormatter("EscM", createTestFormatter)
+	if err == nil {
+		t.Errorf("expected an error when trying to register a custom formatter with a reserved parameterized alias")
+	}
+	err = RegisterCustomFormatter("TEST", createTestFormatter)
+	if err != nil {
+		t.Fatalf("Registering custom formatter: unexpected error: %s", err)
+	}
+	err = RegisterCustomFormatter("TEST", createTestFormatter)
+	if err == nil {
+		t.Errorf("expected an error when trying to register a custom formatter with duplicate name")
+	}
+
+	context, conErr := currentContext()
+	if conErr != nil {
+		t.Fatal("Cannot get current context:" + conErr.Error())
+		return
+	}
+
+	form, err := newFormatter("%Msg %TEST 123")
+	if err != nil {
+		t.Fatalf("%s\n", err.Error())
+	}
+
+	expected := fmt.Sprintf("test TEST %sTestCustomFormatterRegistration TEST 123", commonPrefix)
+	msg := form.Format("test", DebugLvl, context)
+	if msg != expected {
+		t.Fatalf("Custom formatter: invalid output. Expected: '%s'. Got: '%s'", expected, msg)
 	}
 }
